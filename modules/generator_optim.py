@@ -47,6 +47,8 @@ class OcclusionAwareGenerator(nn.Module):
         self.estimate_occlusion_map = estimate_occlusion_map
         self.num_channels = num_channels
 
+        self.enc_features = None
+
     def deform_input(self, inp, deformation):
         _, h_old, w_old, _ = deformation.shape
         _, _, h, w = inp.shape
@@ -56,11 +58,17 @@ class OcclusionAwareGenerator(nn.Module):
             deformation = deformation.permute(0, 2, 3, 1)
         return F.grid_sample(inp, deformation)
 
-    def forward(self, source_image, kp_driving, kp_source):
+    def encode_source(self, source_image):
         # Encoding (downsampling) part
         out = self.first(source_image)
         for i in range(len(self.down_blocks)):
             out = self.down_blocks[i](out)
+
+        self.enc_features = out
+
+    def forward(self, source_image, kp_driving, kp_source, optim_ret=True):
+        assert self.enc_features is not None, "Call encode_source()"
+        out = self.enc_features
 
         # Transforming feature representation according to deformation and occlusion
         output_dict = {}
@@ -83,7 +91,8 @@ class OcclusionAwareGenerator(nn.Module):
                     occlusion_map = F.interpolate(occlusion_map, size=out.shape[2:], mode='bilinear')
                 out = out * occlusion_map
 
-            output_dict["deformed"] = self.deform_input(source_image, deformation)
+            if not optim_ret:
+                output_dict["deformed"] = self.deform_input(source_image, deformation)
 
         # Decoding part
         out = self.bottleneck(out)
