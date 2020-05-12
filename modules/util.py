@@ -241,3 +241,29 @@ class AntiAliasInterpolation2d(nn.Module):
         out = F.interpolate(out, scale_factor=(self.scale, self.scale))
 
         return out
+
+
+def inverse(input):
+    batch, n_kp = input.shape[0], input.shape[1]
+    input = input.reshape(batch, n_kp, 4)
+
+    # build permutation matrix (a, b, c, d) -> (d, -b, -c, a)
+    permutation_matrix = torch.tensor([
+        [ 0,  0,  0,  1],
+        [ 0, -1,  0,  0],
+        [ 0,  0, -1,  0],
+        [ 1,  0,  0,  0]
+    ], dtype=input.dtype).unsqueeze(0).to(input.device)
+
+    a = input[:, :, 0]
+    b = input[:, :, 1]
+    c = input[:, :, 2]
+    d = input[:, :, 3]
+    dets = (a * d - b * c).unsqueeze(-1)
+        
+    input = input.bmm(permutation_matrix)
+    input = input / dets
+
+    input = input.reshape(batch, n_kp, 2, 2)
+    
+    return input
